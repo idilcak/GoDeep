@@ -18,7 +18,7 @@ class Player():
             choice = np.random.choice(np.arange(0, len(pDistribution)), p=pDistribution)
 
         return position.play_move(coords.from_flat(choice))
-
+"""
 black = Player()
 white = Player()
 #we assume constant komi so there is no need to record this. 
@@ -31,11 +31,39 @@ while not position.is_game_over():
     else:
         position = white.choose_and_play_move(position)
     print(position.__str__())
+    print(position.board)
     time.sleep(1)
     allPositions.append((position.board, position.to_play*-1, position.caps))
 
 print("The Score from Black's Perspective")
 print(position.score())
+"""
+
+def selfplay(black, white):
+    dataBlack = []
+    dataWhite = []
+    position = go.Position()
+    while not position.is_game_over():
+        if (position.to_play == 1):
+            positionData = (np.array(position.board), position.caps[0], position.caps[1] + position.komi)
+            dataBlack.append(positionData)
+            # include komi?
+            position = black.choose_and_play_move(position)
+            
+        else:
+            positionData = (np.array(position.board)*-1, position.caps[1] + position.komi, position.caps[0])
+            dataWhite.append(positionData)
+            position = white.choose_and_play_move(position)
+    data = []
+    for datum in dataBlack:
+        data.append((datum, position.result()))
+    for datum in dataWhite:
+        data.append((datum, position.result() *-1))
+    return data
+    
+
+black = Player()
+white = Player()        
 
 # How should we represent the game state?
 # we need the board, but do we want to alternate the 1s and -1s?
