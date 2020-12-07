@@ -58,8 +58,8 @@ class ValueNet():
 
 
 def loss(logits, labels):
-    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits)
-
+    mse = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)
+    return mse(logits, labels)
 
 def train(model, data, labels):
     for start in range(0, len(data) - model.batch_size, model.batch_size):
@@ -78,9 +78,18 @@ white=player.Player()
 black=player.Player()
 data, labels=player.selfplay(black, white)
 
+
+myVal = ValueNet()
+train(myVal, data, labels)
+
+
+"""
+sess=tf.compat.v1.Session()
 myVal=ValueNet()
 saver=tf.compat.v1.train.Saver(myVal.trainable_variables, filename="val.txt")
-sess=tf.compat.v1.Session()
+
+
 # train
 sess.run(train(myVal, data, labels))
 saver.save(sess, "val.txt")
+"""
