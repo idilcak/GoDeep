@@ -36,7 +36,6 @@ class ValueNet():
         batch = list(list(zip(*game_state)))
         board = tf.reshape(tf.convert_to_tensor(
             batch[0], dtype=tf.int32), [50, 9, 9, 1])
-        print(board)
 
         myCaps = tf.convert_to_tensor(batch[1])
 
@@ -50,8 +49,11 @@ class ValueNet():
         features = self.norm3(features)
 
         features = tf.reshape(tf.cast(features, dtype=tf.float32), [50, 81, ])
-        features = tf.concat(features, tf.convert_to_tensor(
-            tf.transpose([myCaps, oppCaps]))
+        other_data = tf.convert_to_tensor([myCaps, oppCaps], dtype=tf.float32)
+        other_data = tf.transpose(other_data)
+
+        features = tf.concat([features, other_data], axis=1)
+        print(features.shape)
         return self.val2(self.val1(features))
 
 
