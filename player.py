@@ -55,11 +55,15 @@ def selfplay(black, white):
             dataWhite.append(positionData)
             position = white.choose_and_play_move(position)
     data = []
+    labels = []
     for datum in dataBlack:
-        data.append((datum, position.result()))
+        data.append(datum)
+        labels.append(position.result())
     for datum in dataWhite:
-        data.append((datum, position.result() *-1))
-    return data
+        data.append(datum)
+        labels.append(position.result()*-1)
+        
+    return data,labels
     
 
 black = Player()

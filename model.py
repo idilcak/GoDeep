@@ -7,20 +7,23 @@ import player
 
 class ValueNet():
     def __init__(self):
-        self.conv1 = tf.keras.layers.Conv2D(100, 3, padding='same',activation='relu', )
-        self.conv2 = tf.keras.layers.Conv2D(100, 3, padding='same',activation='relu')
-        self.conv3 = tf.keras.layers.Conv2D(1, 3, padding='same', activation='relu')
-        self.norm1 = tf.keras.layers.BatchNormalization()
-        self.norm2 = tf.keras.layers.BatchNormalization()
-        self.norm3 = tf.keras.layers.BatchNormalization()
+        self.batch_size = 50
+        self.conv1 = tf.keras.layers.Conv2D(100, 3, padding='same',activation='relu', trainable=True, input_shape=(50, 9, 9))
+        self.conv2 = tf.keras.layers.Conv2D(100, 3, padding='same',activation='relu',  trainable=True)
+        self.conv3 = tf.keras.layers.Conv2D(1, 3, padding='same', activation='relu',  trainable=True)
+        self.norm1 = tf.keras.layers.BatchNormalization(trainable=True)
+        self.norm2 = tf.keras.layers.BatchNormalization(trainable=True)
+        self.norm3 = tf.keras.layers.BatchNormalization(trainable=True)
 
 
         # now the value net specifics
 
-        self.val1 = tf.keras.layers.Dense(100, activation='relu')
-        self.val2 = tf.keras.layers.Dense(1, activation='tanh')
+        self.val1 = tf.keras.layers.Dense(100, activation='relu', trainable=True)
+        self.val2 = tf.keras.layers.Dense(1, activation='tanh', trainable=True)
+        self.trainable_variables= tf.compat.v1.trainable_variables()
+        # bla bla
 
-
+        self.optimizer = tf.keras.optimizers.Adam(0.001)
         pass
     
 
@@ -28,31 +31,48 @@ class ValueNet():
         #game state is a tuple of type batch_size*(9x9, caps, caps)
         
         batch= list(list(zip(*game_state)))
-        board = batch[0]
+        board = tf.reshape(tf.convert_to_tensor(batch[0], dtype=tf.int32), [50,9,9,])
+        print(board)
         
-        myCaps = batch[1]
+        myCaps = tf.convert_to_tensor(batch[1])
 
-        oppCaps = batch[2]
-        #features = self.conv3(self.conv2(self.conv1(board)))
-        #features = self.norm3(self.conv3(self.norm2(self.conv2(self.norm1(self.conv1(board))))))
-        """
+        oppCaps = tf.convert_to_tensor(batch[2])
+
+
+        features = self.norm3(self.conv3(self.norm2(self.conv2(self.norm1(self.conv1(tf.cast(board, dtype=tf.int32)))))))
+    
         features = tf.reshape(features, [81,])
         features = tf.concat(features, tf.convert_to_tensor([myCaps, oppCaps]))
         return self.val2(self.val1(features))
-        """
-        return board
+        
+
+        
+def loss(logits, labels):
+    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits)
+
+
+
+def train(model, data, labels):
+    for start in range(0, len(data) - model.batch_size, model.batch_size):
+        dataBatch = data[start:start+model.batch_size]
+        labelBatch = labels[start:start+model.batch_size]
+        with tf.GradientTape() as tape:
+            losss = loss(model.call(dataBatch), tf.convert_to_tensor(labelBatch))
+        gradients = tape.gradient(losss, model.trainable_variables)
+        model.optimizer.apply_gradients(
+            zip(gradients, model.trainable_variables))
+    pass
+
+
+
 
 white = player.Player()
 black = player.Player()
-myData = list(list(zip(*player.selfplay(black, white))))
+data, labels = player.selfplay(black, white)
 
 myVal = ValueNet()
-myVal.call(myData[0])
-
-
-
-    
-
-
-
-
+saver = tf.compat.v1.train.Saver(myVal.trainable_variables, filename="val.txt")
+sess = tf.compat.v1.Session()
+# train
+sess.run(train(myVal, data, labels))
+saver.save(sess, "val.txt")
