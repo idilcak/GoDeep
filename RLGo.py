@@ -31,6 +31,13 @@ def ucb_score(parent, child):
 
     return value_score + prior_score
 
+def all_ucb_score(parent):
+    scores = np.zeros([82])
+    scores += -1
+    for childID in parent.children.keys():
+        scores[childID] = ucb_score(parent, parent.children[childID])
+    return scores
+
 
 class Node():
     def __init__(self, prior, to_play):
@@ -93,9 +100,7 @@ class Node():
             
             if prob != 0:
                 self.children[a] = Node(prior=prob, to_play=self.position.to_play*-1)
-            else:
-                print(prob)
-                print(a)
+            
 
 
     def __repr__(self):
@@ -103,7 +108,7 @@ class Node():
         Debugger pretty print node info
         """
         prior = "{0:.2f}".format(self.prior)
-        return "{} Prior: {} Count: {} Value: {}".format(self.state.__str__(), prior, self.visit_count, self.value())
+        return "{} Prior: {} Count: {} Value: {}".format(self.position.__str__(), prior, self.visit_count, self.value())
 
 
 
@@ -125,6 +130,7 @@ class MCTS():
         action_probs = action_probs * valid_moves  # mask invalid moves
         action_probs /= np.sum(action_probs)
         root.expand(position, action_probs)
+        
 
         for _ in range(self.number_of_sim):
             node = root
@@ -133,7 +139,6 @@ class MCTS():
             while node.expanded():
                 action, node = node.select_child()
                 search_path.append(node)
-            
             parent = search_path[-2]
             position = parent.position
             next_position = position.play_move(coords.from_flat(action))
@@ -144,19 +149,17 @@ class MCTS():
                 valid_moves = next_position.all_legal_moves()
                 action_probs = action_probs * valid_moves  # mask invalid moves
                 action_probs /= np.sum(action_probs)
-                print(valid_moves)
-                print(action_probs)
 
-                root.expand(next_position, action_probs)
+                node.expand(next_position, action_probs)
             else:
                 if next_position.to_play == 1:
                     value = next_position.result()
                 else:
                     value = next_position.result()*-1
             
-
             self.backpropagate(search_path, value, next_position.to_play)
         return root
+        
 
     def backpropagate(self, search_path, value, to_play):
         for node in reversed(search_path):
@@ -279,9 +282,8 @@ def playGames(model, number_of_games):
             actions = model.callPol(boards, playerCaps, opponentCaps)[0]
             actions = actions*position.all_legal_moves()
             move = tf.math.argmax(actions).numpy()
-            print(position.__str__())
             position = position.play_move(coords.from_flat(move))
-        game.append(position.result)
+        game.append(position.result())
         games.append(game)
     return games
 
@@ -309,7 +311,7 @@ def gamesToResult(games):
     results = []
     for game in games:
         result = game[-1]
-        for position in game:
+        for position in game[:-1]:
             if position.to_play == 1:
                 results.append(result)
             else:
@@ -344,33 +346,60 @@ def trainVal(model, boards, playerCaps, opponentCaps, labels):
 
     pass
 
-def policyLabel(model, position):
+def generatePolLabels(model, positions):
+    myTree = MCTS(model, 300)
+    labels = []
+    for position in positions:
+        labels.append(all_ucb_score(myTree.run(model, position)))
+    return labels
+
+def trainPol(model, games, boards, playerCaps, opponentCaps):
+    positions = []
+    for game in games:
+        for position in game[:-1]:
+            positions.append(position)
+    # shuffle here
+    for start in range(0, len(boards) - model.batch_size, model.batch_size):
+        boardsBatch = boards[start:start+model.batch_size]
+        playerCapsBatch = playerCaps[start:start+model.batch_size]
+        opponentCapsBatch = opponentCaps[start:start+model.batch_size]
+        positionBatch = positions[start:start+model.batch_size]
+        labelsBatch = generatePolLabels(model, positionBatch)
+        with tf.GradientTape() as tape:
+            losss = loss(model, model.callPol(boardsBatch, playerCapsBatch, opponentCapsBatch), labelsBatch)
+        gradients = tape.gradient(losss, model.trainable_variables)
+        model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
     pass
-def trainPol(model, games):
-    
-
-    for start in range(0, len(data) - model.batch_size, model.batch_size):
-        dataBatch = data[start:start+model.batch_size]
-        # need to generate labels using MCTS
 
 
-
-    # once we have the labels
-
+def demonstration(model):
+    position = go.Position()
+    while not position.is_game_over():
+        boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
+        actions = model.callPol(boards, playerCaps, opponentCaps)[0]
+        actions = actions*position.all_legal_moves()
+        move = tf.math.argmax(actions).numpy()
+        print(position.__str__())
+        position = position.play_move(coords.from_flat(move))
+    pass
 
 
 
 
 myModel = Model()
-myTree = MCTS(myModel, 30)
-print(myTree.run(myModel, go.Position()).__repr__())
-"""
+
+
+
 for _ in range(10):
     games = playGames(myModel, 5)
+    print(games[0])
     boards, playerCaps, opponentCaps = gamesToData(games)
     labels = gamesToResult(games)
     trainVal(myModel, boards, playerCaps, opponentCaps, labels)
+    trainPol(myModel, games, boards, playerCaps, opponentCaps)
+demonstration(myModel)
 
+"""
 trainVal(myVal, data, labels)
 
 initialPos = go.Position()
