@@ -2,6 +2,7 @@ import math
 import numpy as np
 import go
 import coords
+import RLGo
 
 
 def ucb_score(parent, child):
@@ -18,7 +19,7 @@ def ucb_score(parent, child):
     return value_score + prior_score
 
 
-class Node:
+class Node():
     def __init__(self, prior, to_play):
         self.visit_count = 0
         self.prior = prior
@@ -87,14 +88,10 @@ class Node:
         prior = "{0:.2f}".format(self.prior)
         return "{} Prior: {} Count: {} Value: {}".format(self.state.__str__(), prior, self.visit_count, self.value())
 
-def collectData(position):
-    if position.to_play==1:
-        return[(np.array(position.board), position.caps[0], position.caps[1] + position.komi)]
-    else:
-        return[(np.array(position.board)*-1, position.caps[1] + position.komi, position.caps[0])]
 
 
-class MCTS:
+
+class MCTS():
     
     def __init__(self, model, number_of_sim):
         self.model = model
@@ -104,9 +101,9 @@ class MCTS:
     def run(self, model, position):
         # assert position is of type Position from go.py
         root = Node(0, position.to_play)
-        data = collectData(position)
-        action_probs = model.callPol(data)[0] 
-        value = model.callVal(data) 
+        boards, playerCaps, opponentCaps = RLGo.gamesToData([[position, 1]])
+        action_probs = model.callPol(boards, playerCaps, opponentCaps)[0] 
+        value = model.callVal(boards, playerCaps, opponentCaps)[0]
         valid_moves = position.all_legal_moves()
         action_probs = action_probs * valid_moves  # mask invalid moves
         action_probs /= np.sum(action_probs)
@@ -124,9 +121,9 @@ class MCTS:
             position = parent.position
             next_position = position.play_move(coords.from_flat(action))
             if not next_position.is_game_over():
-                new_data = collectData(next_position)
-                action_probs = model.callPol(new_data)[0] 
-                value = model.callVal(new_data) 
+                new_boards, new_playerCaps, new_opponentCaps = RLGo.gamesToData([[position, 1]])
+                action_probs = model.callPol(new_boards, new_playerCaps, new_opponentCaps)[0] 
+                value = model.callVal(new_boards, new_playerCaps, new_opponentCaps)[0] 
                 valid_moves = position.all_legal_moves()
                 action_probs = action_probs * valid_moves  # mask invalid moves
                 action_probs /= np.sum(action_probs)
@@ -147,5 +144,8 @@ class MCTS:
             node.visit_count += 1
 
 
+
+def newTree(model, number_of_sim):
+    return MCTS(model, number_of_sim)
 
 
