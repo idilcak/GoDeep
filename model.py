@@ -4,7 +4,7 @@ import tensorflow as tf
 import numpy as np
 import time
 import player
-
+import TreeSearch
 
 class ValueNet(tf.keras.Model):
     def __init__(self):
@@ -25,18 +25,23 @@ class ValueNet(tf.keras.Model):
         self.val1 = tf.keras.layers.Dense(
             100, activation='relu', trainable=True)
         self.val2 = tf.keras.layers.Dense(1, activation='tanh', trainable=True)
-        # bla bla
+        
+        # now the policy net specifics
+        self.pol1 = tf.keras.layers.Dense(
+            100, activation='relu', trainable=True)
+        self.pol2 = tf.keras.layers.Dense(
+            82, trainable=True)
 
         self.optimizer = tf.keras.optimizers.Adam(0.001)
         self.mse = tf.keras.losses.MeanSquaredError()
         pass
 
-    def call(self, game_state):
+    def callBase(self, game_state):
         # game state is a tuple of type batch_size*(9x9, caps, caps)
-
+        this_size = len(game_state)
         batch = list(list(zip(*game_state)))
         board = tf.reshape(tf.convert_to_tensor(
-            batch[0], dtype=tf.int32), [50, 9, 9, 1])
+            batch[0], dtype=tf.int32), [this_size, 9, 9, 1])
 
         myCaps = tf.convert_to_tensor(batch[1])
 
@@ -49,35 +54,50 @@ class ValueNet(tf.keras.Model):
         features = self.conv3(features)
         features = self.norm3(features)
 
-        features = tf.reshape(tf.cast(features, dtype=tf.float32), [50, 81, ])
+        features = tf.reshape(tf.cast(features, dtype=tf.float32), [this_size, 81, ])
         other_data = tf.convert_to_tensor([myCaps, oppCaps], dtype=tf.float32)
         other_data = tf.transpose(other_data)
 
         features = tf.concat([features, other_data], axis=1)
-        print(features.shape)
+        return features
+    
+    def callVal(self, game_state):
+        features = self.callBase(game_state)
         return self.val2(self.val1(features))
+
+    def callPol(self, game_state):
+        features = self.callBase(game_state)
+        return self.pol2(self.pol1(features))
+
+    
 
 
 def loss(model, logits, labels):
     return model.mse(labels, logits)
 
 
-def train(model, data, labels):
+def trainVal(model, data, labels):
     for start in range(0, len(data) - model.batch_size, model.batch_size):
         dataBatch = data[start:start+model.batch_size]
         labelBatch = labels[start:start+model.batch_size]
         with tf.GradientTape() as tape:
-            losss = loss(model, model.call(dataBatch),
+            losss = loss(model, model.callVal(dataBatch),
                          tf.convert_to_tensor(labelBatch))
-            print('loss')
-            print(losss)
         gradients = tape.gradient(losss, model.trainable_variables)
         model.optimizer.apply_gradients(
             zip(gradients, model.trainable_variables))
-    print('a')
-    print(model.trainable_variables)
     pass
 
+
+def trainPol(model, data):
+
+    for start in range(0, len(data) - model.batch_size, model.batch_size):
+        dataBatch = data[start:start+model.batch_size]
+        # need to generate labels using MCTS
+
+
+
+    # once we have the labels
 
 white = player.Player()
 black = player.Player()
@@ -85,8 +105,12 @@ data, labels = player.selfplay(black, white)
 
 
 myVal = ValueNet()
-train(myVal, data, labels)
 
+trainVal(myVal, data, labels)
+
+initialPos = go.Position()
+mySearch = TreeSearch.MCTS(myVal, 30)
+mySearch.run(myVal, initialPos).__repr__()
 
 """
 sess=tf.compat.v1.Session()
@@ -97,7 +121,7 @@ saver=tf.compat.v1.train.Saver(myVal.trainable_variables, filename="val.txt")
 # train
 sess.run(train(myVal, data, labels))
 saver.save(sess, "val.txt")
-"""
+
 a = myVal.trainable_variables
 print(a)
 # print('aaaa')
@@ -107,3 +131,4 @@ sess = tf.compat.v1.Session()
 # train
 sess.run(a)
 #saver.save(sess, "val.txt")
+"""
