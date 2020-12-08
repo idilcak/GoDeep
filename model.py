@@ -89,7 +89,13 @@ def trainVal(model, data, labels):
     pass
 
 
+def generateLabels(model, data):
+    #for datum in data:
+    pass
+    
+
 def trainPol(model, data):
+
 
     for start in range(0, len(data) - model.batch_size, model.batch_size):
         dataBatch = data[start:start+model.batch_size]
