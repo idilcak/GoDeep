@@ -272,17 +272,22 @@ class Model(tf.keras.Model):
 # number_of_games: pretty self explanatory
 # returns a list of games: a game is a list of positions and with the result appended at the end
 def playGames(model, number_of_games):
+    # will restrict the games to 
     games = []
     for _ in range(number_of_games):
         game = []
         position = go.Position()
         while not position.is_game_over():
-            game.append(position)
-            boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
-            actions = model.callPol(boards, playerCaps, opponentCaps)[0]
-            actions = actions*position.all_legal_moves()
-            move = tf.math.argmax(actions).numpy()
-            position = position.play_move(coords.from_flat(move))
+            if position.n >=100:
+                position.pass_move()
+            
+            else:
+                game.append(position)
+                boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
+                actions = model.callPol(boards, playerCaps, opponentCaps)[0]
+                actions = actions*position.all_legal_moves()
+                move = tf.math.argmax(actions).numpy()
+                position = position.play_move(coords.from_flat(move))
         game.append(position.result())
         games.append(game)
     return games
@@ -347,7 +352,7 @@ def trainVal(model, boards, playerCaps, opponentCaps, labels):
     pass
 
 def generatePolLabels(model, positions):
-    myTree = MCTS(model, 300)
+    myTree = MCTS(model, 50)
     labels = []
     for position in positions:
         labels.append(all_ucb_score(myTree.run(model, position)))
@@ -358,13 +363,16 @@ def trainPol(model, games, boards, playerCaps, opponentCaps):
     for game in games:
         for position in game[:-1]:
             positions.append(position)
+    print("the number of positions in this epoch is " + str(len(positions)))
     # shuffle here
     for start in range(0, len(boards) - model.batch_size, model.batch_size):
         boardsBatch = boards[start:start+model.batch_size]
         playerCapsBatch = playerCaps[start:start+model.batch_size]
         opponentCapsBatch = opponentCaps[start:start+model.batch_size]
         positionBatch = positions[start:start+model.batch_size]
+
         labelsBatch = generatePolLabels(model, positionBatch)
+        print("done with label generation")
         with tf.GradientTape() as tape:
             losss = loss(model, model.callPol(boardsBatch, playerCapsBatch, opponentCapsBatch), labelsBatch)
         gradients = tape.gradient(losss, model.trainable_variables)
@@ -387,19 +395,27 @@ def demonstration(model):
 
 
 myModel = Model()
+"""
+position = go.Position()
+game = playGames(myModel, 1)[0]
+positions = game[:-1]
+print(generatePolLabels(myModel, positions))
 
-
-
+"""
 for _ in range(10):
     games = playGames(myModel, 5)
-    print(games[0])
+    print("done with games")
     boards, playerCaps, opponentCaps = gamesToData(games)
     labels = gamesToResult(games)
     trainVal(myModel, boards, playerCaps, opponentCaps, labels)
+    print("done with value training")
     trainPol(myModel, games, boards, playerCaps, opponentCaps)
-demonstration(myModel)
+    print("done with policy training")
 
+
+demonstration(myModel)
 """
+
 trainVal(myVal, data, labels)
 
 initialPos = go.Position()
