@@ -7,9 +7,14 @@ concerns atm:
     a. it is not clear whether there is something wrong with the MCTS or whether it does not think it can do better than 50%?
     b. I want to test some of the game results, see if white is always winning
     c. Not sure how to fix the convering to not playing problem
+RESOLVED: the gradients are zero because half the layers are not used when computing val and the other half arent used when computing pol. 
 3. The Label generation process is what takes forever (which makes sense but this long?!)
 
 TODO:
 2. resignation system ?
 3. shuffling
 4. one fewer game per set? 
+
+
+CHANGES:
+Artifically discounted earlier positions, this way it will hopefully not converge to passing

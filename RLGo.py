@@ -13,11 +13,6 @@ import math
 
 
 
-
-
-
-
-
 def ucb_score(parent, child):
     """
     The score for an action that would transition between the parent and child.
@@ -35,7 +30,7 @@ def all_ucb_score(parent):
     scores = np.zeros([82])
     scores += -1
     for childID in parent.children.keys():
-        scores[childID] = ucb_score(parent, parent.children[childID])
+        scores[childID] = ucb_score(parent, parent.children[childID])*-1
     return scores
 
 
@@ -181,7 +176,7 @@ class MCTS():
 class Model(tf.keras.Model):
     def __init__(self):
         super(Model, self).__init__()
-        self.batch_size = 50
+        self.batch_size = 20
         self.conv1 = tf.keras.layers.Conv2D(
             100, 3, padding='same', activation='relu', trainable=True, dtype=tf.float32)
         self.conv2 = tf.keras.layers.Conv2D(
@@ -212,7 +207,7 @@ class Model(tf.keras.Model):
         self.pol2 = tf.keras.layers.Dense(
             82, activation='softmax', trainable=True)
 
-        self.optimizer = tf.keras.optimizers.Adam(0.001)
+        self.optimizer = tf.keras.optimizers.Adam(0.01)
         self.mse = tf.keras.losses.MeanSquaredError()
         pass
 
@@ -279,7 +274,7 @@ def playGames(model, number_of_games):
         position = go.Position()
         while not position.is_game_over():
             if position.n >=100:
-                position.pass_move()
+                position = position.pass_move()
                 game.append(position)
             
             else:
@@ -320,11 +315,11 @@ def gamesToResult(games):
     results = []
     for game in games:
         result = game[-1]
-        for position in game[:-1]:
-            if position.to_play == 1:
-                results.append(result)
+        for i in range(len(game)-1):
+            if game[i].to_play == 1:
+                results.append(result*(0.97**(100-i)))
             else:
-                results.append(result*-1)
+                results.append(result*(0.97**(100-i)*-1))
 
     return results
 
@@ -341,6 +336,12 @@ def loss(model, logits, labels):
 
 def trainVal(model, boards, playerCaps, opponentCaps, labels):
     #Shuffle Here
+    ind = range(len(boards))
+    ind = tf.random.shuffle(ind)
+    boards = tf.gather(boards, ind)
+    playerCaps = tf.gather(playerCaps, ind)
+    opponentCaps = tf.gather(opponentCaps, ind)
+    labels = tf.gather(labels, ind)
     for start in range(0, len(boards) - model.batch_size, model.batch_size):
         boardsBatch = boards[start:start+model.batch_size]
         playerCapsBatch = playerCaps[start:start+model.batch_size]
@@ -356,7 +357,7 @@ def trainVal(model, boards, playerCaps, opponentCaps, labels):
     pass
 
 def generatePolLabels(model, positions):
-    myTree = MCTS(model, 50)
+    myTree = MCTS(model, 100)
     labels = []
     for position in positions:
         labels.append(all_ucb_score(myTree.run(model, position)))
@@ -410,15 +411,22 @@ def spar(veteran, beginner, matches):
             if position.to_play == 1:
                 boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
                 actions = black.callPol(boards, playerCaps, opponentCaps)[0]
-                actions = actions*position.all_legal_moves()
-                move = tf.math.argmax(actions).numpy()
+                pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
+                legalMoves = position.all_legal_moves()
+                move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
+                if legalMoves[move] ==0:
+                    actions = actions*legalMoves
+                    move = tf.math.argmax(actions).numpy()
                 position = position.play_move(coords.from_flat(move))
             else:
-                game.append(position)
                 boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
                 actions = white.callPol(boards, playerCaps, opponentCaps)[0]
-                actions = actions*position.all_legal_moves()
-                move = tf.math.argmax(actions).numpy()
+                pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
+                legalMoves = position.all_legal_moves()
+                move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
+                if legalMoves[move] ==0:
+                    actions = actions*legalMoves
+                    move = tf.math.argmax(actions).numpy()
                 position = position.play_move(coords.from_flat(move))
         if black == veteran:
             if position.result() == 1:
@@ -454,8 +462,11 @@ positions = game[:-1]
 print(generatePolLabels(myModel, positions))
 
 """
-for i in range(100):
-    print(str(i+1)+ " out of 100")
+newModel = Model()
+for i in range(20):
+    if i == 10:
+        novice = myModel
+    print(str(i+1)+ " out of 20")
     games = playGames(myModel, 1)
     for game in games:
         games_length.append(len(game)-1)
@@ -473,16 +484,19 @@ for i in range(100):
     print("done with value training")
     trainPol(myModel, games, boards, playerCaps, opponentCaps)
     print("done with policy training")
+    spar(myModel, newModel, 10)
+    
 
 print("The number of black wins " + str(black_wins))
 print("The number of white wins " + str(white_wins))
 print("The game lengths")
 print(games_length)
 #demonstration(myModel)
-newModel = Model()
+
 print("Sparring")
 
 spar(myModel, newModel, 100)
+spar(myModel, novice, 100)
 """
 
 trainVal(myVal, data, labels)
