@@ -280,13 +280,18 @@ def playGames(model, number_of_games):
         while not position.is_game_over():
             if position.n >=100:
                 position.pass_move()
+                game.append(position)
             
             else:
                 game.append(position)
                 boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
                 actions = model.callPol(boards, playerCaps, opponentCaps)[0]
-                actions = actions*position.all_legal_moves()
-                move = tf.math.argmax(actions).numpy()
+                pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
+                legalMoves = position.all_legal_moves()
+                move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
+                if legalMoves[move] ==0:
+                    actions = actions*legalMoves
+                    move = tf.math.argmax(actions).numpy()
                 position = position.play_move(coords.from_flat(move))
         game.append(position.result())
         games.append(game)
@@ -298,7 +303,6 @@ def gamesToData(games):
     playerCaps = []
     opponentCaps = []
     for game in games:
-        result = game[-1]
         for position in game[:-1]: # we throw away the result
             if position.to_play == 1:
                 boards.append(position.board)
@@ -391,9 +395,57 @@ def demonstration(model):
         position = position.play_move(coords.from_flat(move))
     pass
 
+def spar(veteran, beginner, matches):
+    veteranWins = 0
+    beginnerWins = 0
+    for i in range(matches):
+        if i % 2 == 0:
+            black = veteran
+            white = beginner
+        else:
+            black = beginner
+            white = veteran
+        position = go.Position()
+        while not position.is_game_over():
+            if position.to_play == 1:
+                boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
+                actions = black.callPol(boards, playerCaps, opponentCaps)[0]
+                actions = actions*position.all_legal_moves()
+                move = tf.math.argmax(actions).numpy()
+                position = position.play_move(coords.from_flat(move))
+            else:
+                game.append(position)
+                boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
+                actions = white.callPol(boards, playerCaps, opponentCaps)[0]
+                actions = actions*position.all_legal_moves()
+                move = tf.math.argmax(actions).numpy()
+                position = position.play_move(coords.from_flat(move))
+        if black == veteran:
+            if position.result() == 1:
+                veteranWins += 1
+            elif position.result() == -1:
+                beginnerWins += 1
+            else:
+                print("No one wins!!")
+        else:
+            if position.result() == 1:
+                beginnerWins += 1
+            elif position.result() == -1:
+                veteranWins += 1
+            else:
+                print("No one wins!!")
+    print("The veteran wins "+str(veteranWins))
+    print("The beginner wins"+str(beginnerWins))
+    pass
 
 
 
+
+
+
+white_wins = 0
+black_wins = 0
+games_length = []
 myModel = Model()
 """
 position = go.Position()
@@ -402,8 +454,18 @@ positions = game[:-1]
 print(generatePolLabels(myModel, positions))
 
 """
-for _ in range(10):
-    games = playGames(myModel, 5)
+for i in range(100):
+    print(str(i+1)+ " out of 100")
+    games = playGames(myModel, 1)
+    for game in games:
+        games_length.append(len(game)-1)
+        result = game[-1]
+        if result == 1:
+            black_wins += 1
+        elif result == -1:
+            white_wins +=1
+        else:
+            print("No one wins!!")
     print("done with games")
     boards, playerCaps, opponentCaps = gamesToData(games)
     labels = gamesToResult(games)
@@ -412,8 +474,15 @@ for _ in range(10):
     trainPol(myModel, games, boards, playerCaps, opponentCaps)
     print("done with policy training")
 
+print("The number of black wins " + str(black_wins))
+print("The number of white wins " + str(white_wins))
+print("The game lengths")
+print(games_length)
+#demonstration(myModel)
+newModel = Model()
+print("Sparring")
 
-demonstration(myModel)
+spar(myModel, newModel, 100)
 """
 
 trainVal(myVal, data, labels)
