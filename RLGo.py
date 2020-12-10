@@ -4,20 +4,15 @@ import tensorflow as tf
 import numpy as np
 import time
 import player
-import math 
-
-
-
-
-
-
+import math
 
 
 def ucb_score(parent, child):
     """
     The score for an action that would transition between the parent and child.
     """
-    prior_score = child.prior * math.sqrt(parent.visit_count) / (child.visit_count + 1)
+    prior_score = child.prior * \
+        math.sqrt(parent.visit_count) / (child.visit_count + 1)
     if child.visit_count > 0:
         # The value of the child is from the perspective of the opposing player
         value_score = -child.value()
@@ -25,6 +20,7 @@ def ucb_score(parent, child):
         value_score = 0
 
     return value_score + prior_score
+
 
 def all_ucb_score(parent):
     scores = np.zeros([82])
@@ -50,12 +46,13 @@ class Node():
         if self.visit_count == 0:
             return 0
         return self.value_sum / self.visit_count
-    
+
     def select_action(self, temperature):
         """
         Select action according to the visit count distribution and the temperature.
         """
-        visit_counts = np.array([child.visit_count for child in self.children.values()])
+        visit_counts = np.array(
+            [child.visit_count for child in self.children.values()])
         actions = [action for action in self.children.keys()]
         if temperature == 0:
             action = actions[np.argmax(visit_counts)]
@@ -64,7 +61,8 @@ class Node():
         else:
             # See paper appendix Data Generation
             visit_count_distribution = visit_counts ** (1 / temperature)
-            visit_count_distribution = visit_count_distribution / sum(visit_count_distribution)
+            visit_count_distribution = visit_count_distribution / \
+                sum(visit_count_distribution)
             action = np.random.choice(actions, p=visit_count_distribution)
 
         return action
@@ -86,17 +84,14 @@ class Node():
 
         return best_action, best_child
 
-
-
     def expand(self, position, action_probs):
-        
+
         self.position = position
         for a, prob in enumerate(action_probs):
-            
-            if prob != 0:
-                self.children[a] = Node(prior=prob, to_play=self.position.to_play*-1)
-            
 
+            if prob != 0:
+                self.children[a] = Node(
+                    prior=prob, to_play=self.position.to_play*-1)
 
     def __repr__(self):
         """
@@ -106,26 +101,22 @@ class Node():
         return "{} Prior: {} Count: {} Value: {}".format(self.position.__str__(), prior, self.visit_count, self.value())
 
 
-
-
 class MCTS():
-    
+
     def __init__(self, model, number_of_sim):
         self.model = model
         self.number_of_sim = number_of_sim
-    
 
     def run(self, model, position):
         # assert position is of type Position from go.py
         root = Node(0, position.to_play)
         boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
-        action_probs = model.callPol(boards, playerCaps, opponentCaps)[0] 
+        action_probs = model.callPol(boards, playerCaps, opponentCaps)[0]
         value = model.callVal(boards, playerCaps, opponentCaps)[0]
         valid_moves = position.all_legal_moves()
         action_probs = action_probs * valid_moves  # mask invalid moves
         action_probs /= np.sum(action_probs)
         root.expand(position, action_probs)
-        
 
         for _ in range(self.number_of_sim):
             node = root
@@ -138,9 +129,12 @@ class MCTS():
             position = parent.position
             next_position = position.play_move(coords.from_flat(action))
             if not next_position.is_game_over():
-                new_boards, new_playerCaps, new_opponentCaps = gamesToData([[next_position, 1]])
-                action_probs = model.callPol(new_boards, new_playerCaps, new_opponentCaps)[0] 
-                value = model.callVal(new_boards, new_playerCaps, new_opponentCaps)[0] 
+                new_boards, new_playerCaps, new_opponentCaps = gamesToData(
+                    [[next_position, 1]])
+                action_probs = model.callPol(
+                    new_boards, new_playerCaps, new_opponentCaps)[0]
+                value = model.callVal(
+                    new_boards, new_playerCaps, new_opponentCaps)[0]
                 valid_moves = next_position.all_legal_moves()
                 action_probs = action_probs * valid_moves  # mask invalid moves
                 action_probs /= np.sum(action_probs)
@@ -151,26 +145,14 @@ class MCTS():
                     value = next_position.result()
                 else:
                     value = next_position.result()*-1
-            
+
             self.backpropagate(search_path, value, next_position.to_play)
         return root
-        
 
     def backpropagate(self, search_path, value, to_play):
         for node in reversed(search_path):
             node.value_sum += value if node.to_play == to_play else -value
             node.visit_count += 1
-
-
-
-
-
-
-
-
-
-
-
 
 
 class Model(tf.keras.Model):
@@ -187,36 +169,31 @@ class Model(tf.keras.Model):
         self.norm2 = tf.keras.layers.BatchNormalization(trainable=True)
         self.norm3 = tf.keras.layers.BatchNormalization(trainable=True)
 
-
-
         self.filter1 = tf.Variable(tf.random.normal([3, 3, 1, 100], stddev=.1))
-        self.filter1 = tf.Variable(tf.random.normal([3, 3, 100, 100], stddev=.1))
-        self.filter1 = tf.Variable(tf.random.normal([3, 3, 100, 20], stddev=.1))
+        self.filter1 = tf.Variable(
+            tf.random.normal([3, 3, 100, 100], stddev=.1))
+        self.filter1 = tf.Variable(
+            tf.random.normal([3, 3, 100, 20], stddev=.1))
 
         # now the value net specifics
-
-
 
         self.val1 = tf.keras.layers.Dense(
             100, activation='relu', trainable=True)
         self.val2 = tf.keras.layers.Dense(1, activation='tanh', trainable=True)
-        
+
         # now the policy net specifics
         self.pol1 = tf.keras.layers.Dense(
             100, activation='relu', trainable=True)
         self.pol2 = tf.keras.layers.Dense(
             82, activation='softmax', trainable=True)
 
-        self.optimizer = tf.keras.optimizers.Adam(0.01)
+        self.optimizer = tf.keras.optimizers.Adam(0.0001)
         self.mse = tf.keras.losses.MeanSquaredError()
         pass
 
     def callBase(self, all_boards, all_playerCaps, all_opponentCaps):
         # game state is a list batch_size*games*gamesize(variable), for more info see PlayGames
         # we want to turn game_batch into a list of boards (with reversing perspective) and a list of captures
-        
-
-        
 
         boards = tf.convert_to_tensor(all_boards, dtype=tf.int32)
         playerCaps = tf.convert_to_tensor(all_playerCaps, dtype=tf.float32)
@@ -240,8 +217,10 @@ class Model(tf.keras.Model):
         features = self.conv3(features)
         features = self.norm3(features)
 
-        features = tf.reshape(tf.cast(features, dtype=tf.float32), [this_size, 81, ])
-        other_data = tf.convert_to_tensor([playerCaps, opponentCaps], dtype=tf.float32)
+        features = tf.reshape(
+            tf.cast(features, dtype=tf.float32), [this_size, 81, ])
+        other_data = tf.convert_to_tensor(
+            [playerCaps, opponentCaps], dtype=tf.float32)
         other_data = tf.transpose(other_data)
 
         features = tf.concat([features, other_data], axis=1)
@@ -253,7 +232,7 @@ class Model(tf.keras.Model):
         """
 
         return features
-    
+
     def callVal(self, boards, playerCaps, oppCaps):
         features = self.callBase(boards, playerCaps, oppCaps)
         return self.val2(self.val1(features))
@@ -267,16 +246,16 @@ class Model(tf.keras.Model):
 # number_of_games: pretty self explanatory
 # returns a list of games: a game is a list of positions and with the result appended at the end
 def playGames(model, number_of_games):
-    # will restrict the games to 
+    # will restrict the games to
     games = []
     for _ in range(number_of_games):
         game = []
         position = go.Position()
         while not position.is_game_over():
-            if position.n >=100:
+            if position.n >= 100:
                 position = position.pass_move()
                 game.append(position)
-            
+
             else:
                 game.append(position)
                 boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
@@ -284,7 +263,7 @@ def playGames(model, number_of_games):
                 pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
                 legalMoves = position.all_legal_moves()
                 move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
-                if legalMoves[move] ==0:
+                if legalMoves[move] == 0:
                     actions = actions*legalMoves
                     move = tf.math.argmax(actions).numpy()
                 position = position.play_move(coords.from_flat(move))
@@ -298,17 +277,16 @@ def gamesToData(games):
     playerCaps = []
     opponentCaps = []
     for game in games:
-        for position in game[:-1]: # we throw away the result
+        for position in game[:-1]:  # we throw away the result
             if position.to_play == 1:
                 boards.append(position.board)
                 playerCaps.append(position.caps[0])
                 opponentCaps.append(position.caps[1] + position.komi)
             else:
-                boards.append(position.board *-1)
+                boards.append(position.board * -1)
                 playerCaps.append(position.caps[1] + position.komi)
                 opponentCaps.append(position.caps[0])
     return boards, playerCaps, opponentCaps
-
 
 
 def gamesToResult(games):
@@ -317,25 +295,19 @@ def gamesToResult(games):
         result = game[-1]
         for i in range(len(game)-1):
             if game[i].to_play == 1:
-                results.append(result*(0.97**(100-i)))
+                results.append(result)
             else:
-                results.append(result*(0.97**(100-i)*-1))
+                results.append(result*-1)
 
     return results
-
 
 
 def loss(model, logits, labels):
     return model.mse(labels, logits)
 
 
-
-
-
-
-
 def trainVal(model, boards, playerCaps, opponentCaps, labels):
-    #Shuffle Here
+    # Shuffle Here
     ind = range(len(boards))
     ind = tf.random.shuffle(ind)
     boards = tf.gather(boards, ind)
@@ -356,12 +328,14 @@ def trainVal(model, boards, playerCaps, opponentCaps, labels):
 
     pass
 
+
 def generatePolLabels(model, positions):
-    myTree = MCTS(model, 100)
+    myTree = MCTS(model, 65)
     labels = []
     for position in positions:
         labels.append(all_ucb_score(myTree.run(model, position)))
     return labels
+
 
 def trainPol(model, games, boards, playerCaps, opponentCaps):
     positions = []
@@ -379,9 +353,11 @@ def trainPol(model, games, boards, playerCaps, opponentCaps):
         labelsBatch = generatePolLabels(model, positionBatch)
         print("done with label generation")
         with tf.GradientTape() as tape:
-            losss = loss(model, model.callPol(boardsBatch, playerCapsBatch, opponentCapsBatch), labelsBatch)
+            losss = loss(model, model.callPol(
+                boardsBatch, playerCapsBatch, opponentCapsBatch), labelsBatch)
         gradients = tape.gradient(losss, model.trainable_variables)
-        model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        model.optimizer.apply_gradients(
+            zip(gradients, model.trainable_variables))
     pass
 
 
@@ -395,6 +371,7 @@ def demonstration(model):
         print(position.__str__())
         position = position.play_move(coords.from_flat(move))
     pass
+
 
 def spar(veteran, beginner, matches):
     veteranWins = 0
@@ -414,7 +391,7 @@ def spar(veteran, beginner, matches):
                 pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
                 legalMoves = position.all_legal_moves()
                 move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
-                if legalMoves[move] ==0:
+                if legalMoves[move] == 0:
                     actions = actions*legalMoves
                     move = tf.math.argmax(actions).numpy()
                 position = position.play_move(coords.from_flat(move))
@@ -424,7 +401,7 @@ def spar(veteran, beginner, matches):
                 pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
                 legalMoves = position.all_legal_moves()
                 move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
-                if legalMoves[move] ==0:
+                if legalMoves[move] == 0:
                     actions = actions*legalMoves
                     move = tf.math.argmax(actions).numpy()
                 position = position.play_move(coords.from_flat(move))
@@ -443,12 +420,8 @@ def spar(veteran, beginner, matches):
             else:
                 print("No one wins!!")
     print("The veteran wins "+str(veteranWins))
-    print("The beginner wins"+str(beginnerWins))
+    print("The beginner wins "+str(beginnerWins))
     pass
-
-
-
-
 
 
 white_wins = 0
@@ -463,10 +436,19 @@ print(generatePolLabels(myModel, positions))
 
 """
 newModel = Model()
-for i in range(20):
-    if i == 10:
+for i in range(50):
+    if i == 5:
         novice = myModel
-    print(str(i+1)+ " out of 20")
+    if i >= 5:
+        if i < 20:
+            spar(myModel, novice, 60)
+        else:
+            if i == 20:
+                novice = myModel
+            if i >= 20:
+                spar(myModel, novice, 70)
+
+    print(str(i+1) + " out of 50")
     games = playGames(myModel, 1)
     for game in games:
         games_length.append(len(game)-1)
@@ -474,9 +456,10 @@ for i in range(20):
         if result == 1:
             black_wins += 1
         elif result == -1:
-            white_wins +=1
+            white_wins += 1
         else:
             print("No one wins!!")
+        spar(myModel, newModel, 50)
     print("done with games")
     boards, playerCaps, opponentCaps = gamesToData(games)
     labels = gamesToResult(games)
@@ -484,14 +467,13 @@ for i in range(20):
     print("done with value training")
     trainPol(myModel, games, boards, playerCaps, opponentCaps)
     print("done with policy training")
-    spar(myModel, newModel, 10)
-    
+
 
 print("The number of black wins " + str(black_wins))
 print("The number of white wins " + str(white_wins))
 print("The game lengths")
 print(games_length)
-#demonstration(myModel)
+# demonstration(myModel)
 
 print("Sparring")
 
