@@ -3,7 +3,6 @@ import coords
 import tensorflow as tf
 import numpy as np
 import time
-import player
 import math
 from preprocessing import *
 from testingFuncs import *
