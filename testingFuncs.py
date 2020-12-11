@@ -76,7 +76,7 @@ def spar(veteran, beginner, matches):
                 print("No one wins!!")
     print("The veteran wins "+str(veteranWins))
     print("The beginner wins "+str(beginnerWins))
-    pass
+    return veteranWins - beginnerWins
 
 
 def choose_and_play_move(position):
@@ -153,4 +153,4 @@ def testAgainstRandom(model, matches):
                 print("No one wins!!")
     print("The model wins "+str(veteranWins))
     print("The random wins "+str(beginnerWins))
-    pass
+    return veteranWins - beginnerWins

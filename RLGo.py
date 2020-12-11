@@ -7,7 +7,8 @@ import math
 from preprocessing import *
 from testingFuncs import *
 
-##MONTE CARLO TREE SEARCH CLASSES AND METHODS WRITTEN BY JOSH BARTY, modified by us##
+
+##MONTE CARLO TREE SEARCH CLASSES AND METHODS WRITTEN BY JOSH VARTY, modified by us##
 def ucb_score(parent, child):
     """
     The score for an action that would transition between the parent and child.
@@ -158,7 +159,7 @@ def all_ucb_score(parent):
     scores = np.zeros([82])
     scores += -1
     for childID in parent.children.keys():
-        scores[childID] = ucb_score(parent, parent.children[childID])
+        scores[childID] = ucb_score(parent, parent.children[childID])*-1
     return scores
 
 
@@ -333,6 +334,7 @@ games_length = []
 myModel = Model()
 
 newModel = Model()
+
 for i in range(50):
     ##SOME RELEVANT TESTING
     #every three games it spars against the random player
@@ -345,7 +347,7 @@ for i in range(50):
     if i % 4 == 1 and i > 5:
         print("Spar against novice")
         spar(myModel, novice, 40)
-    print(str(i+1) + " out of 50")
+    print(str(i+1) + " out of 100")
     games = playGames(myModel, 1)
     #want to save the number of games white won, the number black won and the number of moves per game
     for game in games:
