@@ -335,7 +335,7 @@ myModel = Model()
 
 newModel = Model()
 
-for i in range(100):
+for i in range(50):
     ##SOME RELEVANT TESTING
     #every three games it spars against the random player
     if i % 3 == 2:
