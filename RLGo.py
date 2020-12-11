@@ -5,8 +5,10 @@ import numpy as np
 import time
 import player
 import math
+from preprocessing import *
+from testingFuncs import *
 
-
+##MONTE CARLO TREE SEARCH CLASSES AND METHODS WRITTEN BY JOSH BARTY, modified by us##
 def ucb_score(parent, child):
     """
     The score for an action that would transition between the parent and child.
@@ -20,14 +22,6 @@ def ucb_score(parent, child):
         value_score = 0
 
     return value_score + prior_score
-
-
-def all_ucb_score(parent):
-    scores = np.zeros([82])
-    scores += -1
-    for childID in parent.children.keys():
-        scores[childID] = ucb_score(parent, parent.children[childID])*-1
-    return scores
 
 
 class Node():
@@ -101,6 +95,10 @@ class Node():
         return "{} Prior: {} Count: {} Value: {}".format(self.position.__str__(), prior, self.visit_count, self.value())
 
 
+
+
+
+
 class MCTS():
 
     def __init__(self, model, number_of_sim):
@@ -155,10 +153,39 @@ class MCTS():
             node.visit_count += 1
 
 
+## MCTS methods written only by us ##
+
+def all_ucb_score(parent):
+    scores = np.zeros([82])
+    scores += -1
+    for childID in parent.children.keys():
+        scores[childID] = ucb_score(parent, parent.children[childID])
+    return scores
+
+
+def generatePolLabels(model, positions):
+    myTree = MCTS(model, 65)
+    labels = []
+    for position in positions:
+        labels.append(all_ucb_score(myTree.run(model, position)))
+    return labels
+
+
+
+
+
+
+
+
+## MODEL DEFINITION
+
+
 class Model(tf.keras.Model):
     def __init__(self):
         super(Model, self).__init__()
         self.batch_size = 20
+
+        #shared layers
         self.conv1 = tf.keras.layers.Conv2D(
             100, 3, padding='same', activation='relu', trainable=True, dtype=tf.float32)
         self.conv2 = tf.keras.layers.Conv2D(
@@ -168,12 +195,6 @@ class Model(tf.keras.Model):
         self.norm1 = tf.keras.layers.BatchNormalization(trainable=True)
         self.norm2 = tf.keras.layers.BatchNormalization(trainable=True)
         self.norm3 = tf.keras.layers.BatchNormalization(trainable=True)
-
-        self.filter1 = tf.Variable(tf.random.normal([3, 3, 1, 100], stddev=.1))
-        self.filter1 = tf.Variable(
-            tf.random.normal([3, 3, 100, 100], stddev=.1))
-        self.filter1 = tf.Variable(
-            tf.random.normal([3, 3, 100, 20], stddev=.1))
 
         # now the value net specifics
 
@@ -186,29 +207,23 @@ class Model(tf.keras.Model):
             100, activation='relu', trainable=True)
         self.pol2 = tf.keras.layers.Dense(
             82, activation='softmax', trainable=True)
-
-        self.optimizer = tf.keras.optimizers.Adam(0.0001)
+        self.learning_rate = 0.0001
+        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate)
         self.mse = tf.keras.losses.MeanSquaredError()
         pass
-
+    
+    #method that calls the layers shared by the policy and value Networks
     def callBase(self, all_boards, all_playerCaps, all_opponentCaps):
-        # game state is a list batch_size*games*gamesize(variable), for more info see PlayGames
-        # we want to turn game_batch into a list of boards (with reversing perspective) and a list of captures
+        # all_boards is a list of varying size whose elements are 2d lists of size (9,9) and represent a board
+        # all_playerCaps is a list of varying size (same size as all_boards) whose elements are floats representing
+        # the stones by the player whose turn it is to place in the baord of the same index
+        # all_opponetCaps is a list of varying size (same size as all_boards) whose elements are floats representing
+        # the stones by the opponent of the player whose turn it is to place in the baord of the same index
 
         boards = tf.convert_to_tensor(all_boards, dtype=tf.int32)
         playerCaps = tf.convert_to_tensor(all_playerCaps, dtype=tf.float32)
         opponentCaps = tf.convert_to_tensor(all_opponentCaps, dtype=tf.float32)
         this_size = len(boards)
-        """
-        this_size = len(game_state)
-        batch = list(list(zip(*game_state)))
-        board = tf.reshape(tf.convert_to_tensor(
-            batch[0], dtype=tf.int32), [this_size, 9, 9, 1])
-        
-        myCaps = tf.convert_to_tensor(batch[1])
-
-        oppCaps = tf.convert_to_tensor(batch[2])
-        """
         boards = tf.reshape(boards, (this_size, 9, 9, 1))
         features = self.conv1(tf.cast(boards, tf.float32))
         features = self.norm1(features)
@@ -224,88 +239,36 @@ class Model(tf.keras.Model):
         other_data = tf.transpose(other_data)
 
         features = tf.concat([features, other_data], axis=1)
-        """
-        features = tf.nn.conv2d(boards, self.filter1, 1, padding='SAME')
-        moments1 = tf.nn.moments(features, [0,1,2])
-        features = tf.nn.batch_normalization(features, moments1[0], moments1[1], variance_epsilon=0.00001,offset= None, scale=None)
-        features = tf.nn.conv2d(features, self.filter2, 1, padding='SAME')
-        """
-
         return features
 
     def callVal(self, boards, playerCaps, oppCaps):
+        #inputs are the same as in callBase, calls Base and then applies the Dense layers for the Value Network
         features = self.callBase(boards, playerCaps, oppCaps)
         return self.val2(self.val1(features))
 
     def callPol(self, boards, playerCaps, oppCaps):
+        #inputs are the same as in callBase, calls Base and then applies the Dense layers for the Policy Network
+
         features = self.callBase(boards, playerCaps, oppCaps)
         return self.pol2(self.pol1(features))
 
 
-# model: as defined in the class Model above
-# number_of_games: pretty self explanatory
-# returns a list of games: a game is a list of positions and with the result appended at the end
-def playGames(model, number_of_games):
-    # will restrict the games to
-    games = []
-    for _ in range(number_of_games):
-        game = []
-        position = go.Position()
-        while not position.is_game_over():
-            if position.n >= 100:
-                position = position.pass_move()
-                game.append(position)
-
-            else:
-                game.append(position)
-                boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
-                actions = model.callPol(boards, playerCaps, opponentCaps)[0]
-                pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
-                legalMoves = position.all_legal_moves()
-                move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
-                if legalMoves[move] == 0:
-                    actions = actions*legalMoves
-                    move = tf.math.argmax(actions).numpy()
-                position = position.play_move(coords.from_flat(move))
-        game.append(position.result())
-        games.append(game)
-    return games
 
 
-def gamesToData(games):
-    boards = []
-    playerCaps = []
-    opponentCaps = []
-    for game in games:
-        for position in game[:-1]:  # we throw away the result
-            if position.to_play == 1:
-                boards.append(position.board)
-                playerCaps.append(position.caps[0])
-                opponentCaps.append(position.caps[1] + position.komi)
-            else:
-                boards.append(position.board * -1)
-                playerCaps.append(position.caps[1] + position.komi)
-                opponentCaps.append(position.caps[0])
-    return boards, playerCaps, opponentCaps
-
-
-def gamesToResult(games):
-    results = []
-    for game in games:
-        result = game[-1]
-        for i in range(len(game)-1):
-            if game[i].to_play == 1:
-                results.append(result)
-            else:
-                results.append(result*-1)
-
-    return results
-
+# calculates mean squared error loss for model based on labels and logits (these can be either value network 
+# loss or policy network loss)
 
 def loss(model, logits, labels):
     return model.mse(labels, logits)
 
 
+#training loop for Value network
+# boards is a list of varying size whose elements are 2d lists of size (9,9) and represent a board
+# playerCaps is a list of varying size (same size as all_boards) whose elements are floats representing
+# the stones by the player whose turn it is to place in the baord of the same index
+# opponetCaps is a list of varying size (same size as all_boards) whose elements are floats representing
+# the stones by the opponent of the player whose turn it is to place in the baord of the same index
+# labels: the discounted results of each position, see preprocessing function position to result
 def trainVal(model, boards, playerCaps, opponentCaps, labels):
     # Shuffle Here
     ind = range(len(boards))
@@ -315,10 +278,12 @@ def trainVal(model, boards, playerCaps, opponentCaps, labels):
     opponentCaps = tf.gather(opponentCaps, ind)
     labels = tf.gather(labels, ind)
     for start in range(0, len(boards) - model.batch_size, model.batch_size):
+        #batch the relevant data 
         boardsBatch = boards[start:start+model.batch_size]
         playerCapsBatch = playerCaps[start:start+model.batch_size]
         opponentCapsBatch = opponentCaps[start:start+model.batch_size]
         labelBatch = labels[start:start+model.batch_size]
+        #calculate loss
         with tf.GradientTape() as tape:
             losss = loss(model, model.callVal(boardsBatch, playerCapsBatch, opponentCapsBatch),
                          tf.convert_to_tensor(labelBatch))
@@ -329,29 +294,26 @@ def trainVal(model, boards, playerCaps, opponentCaps, labels):
     pass
 
 
-def generatePolLabels(model, positions):
-    myTree = MCTS(model, 65)
-    labels = []
-    for position in positions:
-        labels.append(all_ucb_score(myTree.run(model, position)))
-    return labels
-
-
+#training loop for Value network
+# boards is a list of varying size whose elements are 2d lists of size (9,9) and represent a board
+# playerCaps is a list of varying size (same size as all_boards) whose elements are floats representing
+# the stones by the player whose turn it is to place in the baord of the same index
+# opponetCaps is a list of varying size (same size as all_boards) whose elements are floats representing
+# the stones by the opponent of the player whose turn it is to place in the baord of the same index
+# games is a list of lists of positions as produced by the playGames function in preprocessing
 def trainPol(model, games, boards, playerCaps, opponentCaps):
     positions = []
+    #flatten the positions
     for game in games:
         for position in game[:-1]:
             positions.append(position)
-    print("the number of positions in this epoch is " + str(len(positions)))
-    # shuffle here
     for start in range(0, len(boards) - model.batch_size, model.batch_size):
         boardsBatch = boards[start:start+model.batch_size]
         playerCapsBatch = playerCaps[start:start+model.batch_size]
         opponentCapsBatch = opponentCaps[start:start+model.batch_size]
         positionBatch = positions[start:start+model.batch_size]
-
+        #use the generatePolLabels function to run the MCTS
         labelsBatch = generatePolLabels(model, positionBatch)
-        print("done with label generation")
         with tf.GradientTape() as tape:
             losss = loss(model, model.callPol(
                 boardsBatch, playerCapsBatch, opponentCapsBatch), labelsBatch)
@@ -361,96 +323,34 @@ def trainPol(model, games, boards, playerCaps, opponentCaps):
     pass
 
 
-def demonstration(model):
-    position = go.Position()
-    while not position.is_game_over():
-        boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
-        actions = model.callPol(boards, playerCaps, opponentCaps)[0]
-        actions = actions*position.all_legal_moves()
-        move = tf.math.argmax(actions).numpy()
-        print(position.__str__())
-        position = position.play_move(coords.from_flat(move))
-    pass
 
 
-def spar(veteran, beginner, matches):
-    veteranWins = 0
-    beginnerWins = 0
-    for i in range(matches):
-        if i % 2 == 0:
-            black = veteran
-            white = beginner
-        else:
-            black = beginner
-            white = veteran
-        position = go.Position()
-        while not position.is_game_over():
-            if position.to_play == 1:
-                boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
-                actions = black.callPol(boards, playerCaps, opponentCaps)[0]
-                pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
-                legalMoves = position.all_legal_moves()
-                move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
-                if legalMoves[move] == 0:
-                    actions = actions*legalMoves
-                    move = tf.math.argmax(actions).numpy()
-                position = position.play_move(coords.from_flat(move))
-            else:
-                boards, playerCaps, opponentCaps = gamesToData([[position, 1]])
-                actions = white.callPol(boards, playerCaps, opponentCaps)[0]
-                pdist = tf.nn.softmax(tf.cast(actions, dtype=tf.float64))
-                legalMoves = position.all_legal_moves()
-                move = np.random.choice(np.arange(0, len(pdist)), p=pdist)
-                if legalMoves[move] == 0:
-                    actions = actions*legalMoves
-                    move = tf.math.argmax(actions).numpy()
-                position = position.play_move(coords.from_flat(move))
-        if black == veteran:
-            if position.result() == 1:
-                veteranWins += 1
-            elif position.result() == -1:
-                beginnerWins += 1
-            else:
-                print("No one wins!!")
-        else:
-            if position.result() == 1:
-                beginnerWins += 1
-            elif position.result() == -1:
-                veteranWins += 1
-            else:
-                print("No one wins!!")
-    print("The veteran wins "+str(veteranWins))
-    print("The beginner wins "+str(beginnerWins))
-    pass
 
+## TRAINING LOOP ##
 
 white_wins = 0
 black_wins = 0
 games_length = []
 myModel = Model()
-"""
-position = go.Position()
-game = playGames(myModel, 1)[0]
-positions = game[:-1]
-print(generatePolLabels(myModel, positions))
 
-"""
 newModel = Model()
 for i in range(50):
+    ##SOME RELEVANT TESTING
+    #every three games it spars against the random player
+    if i % 3 == 2:
+        print("Spar against random player")
+        testAgainstRandom(myModel, 40)
     if i == 5:
         novice = myModel
-    if i >= 5:
-        if i < 20:
-            spar(myModel, novice, 60)
-        else:
-            if i == 20:
-                novice = myModel
-            if i >= 20:
-                spar(myModel, novice, 70)
-
+    #after the 5th move and every 4 moves it plays against the version of itself that was trained on 5 games
+    if i % 4 == 1 and i > 5:
+        print("Spar against novice")
+        spar(myModel, novice, 40)
     print(str(i+1) + " out of 50")
     games = playGames(myModel, 1)
+    #want to save the number of games white won, the number black won and the number of moves per game
     for game in games:
+        print("The game's length was " +str(len(game)-1))
         games_length.append(len(game)-1)
         result = game[-1]
         if result == 1:
@@ -458,52 +358,27 @@ for i in range(50):
         elif result == -1:
             white_wins += 1
         else:
-            print("No one wins!!")
-        spar(myModel, newModel, 50)
-    print("done with games")
+            print("No one wins!!") #this is bad, there are no draws in Go
+    #collect data
     boards, playerCaps, opponentCaps = gamesToData(games)
+    #create labels for value network
     labels = gamesToResult(games)
+    #train value network
     trainVal(myModel, boards, playerCaps, opponentCaps, labels)
-    print("done with value training")
+    #train policy network
     trainPol(myModel, games, boards, playerCaps, opponentCaps)
-    print("done with policy training")
+    print("done with training")
 
 
 print("The number of black wins " + str(black_wins))
 print("The number of white wins " + str(white_wins))
 print("The game lengths")
 print(games_length)
-# demonstration(myModel)
 
-print("Sparring")
-
-spar(myModel, newModel, 100)
-spar(myModel, novice, 100)
-"""
-
-trainVal(myVal, data, labels)
-
-initialPos = go.Position()
-mySearch = TreeSearch.MCTS(myVal, 30)
-mySearch.run(myVal, initialPos).__repr__()
-
-
-sess=tf.compat.v1.Session()
-myVal=ValueNet()
-saver=tf.compat.v1.train.Saver(myVal.trainable_variables, filename="val.txt")
-
-
-# train
-sess.run(train(myVal, data, labels))
-saver.save(sess, "val.txt")
-
-a = myVal.trainable_variables
-print(a)
-# print('aaaa')
-# print(myVal.trainable_variables)
-# print('aaaa')
-sess = tf.compat.v1.Session()
-# train
-sess.run(a)
-#saver.save(sess, "val.txt")
-"""
+print("Sparring against untrained version of self")
+spar(myModel, newModel, 200)
+print("Sparring against version after 5 games")
+spar(myModel, novice, 200)
+print("Sparring against random player")
+testAgainstRandom(myModel, 200)
+myModel.save_weights('my-weights.txt')
